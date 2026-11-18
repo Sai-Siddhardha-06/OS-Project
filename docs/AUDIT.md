@@ -98,3 +98,14 @@ Every subsystem, kernel file, script, dataset, log file, and artifact was subjec
 |---|---|---|---|
 | **F.1 Clean ZIP Packaging** | **DONE** | Cleaned build tree and regenerated `PM-MLFQ-source.zip` (1.4 MB). Verified 0 forbidden build artifacts (`.o`, `.d`, `.asm`, `.sym`, `fs.img`, `kernel/kernel`, `__pycache__`). | Clean, reproducible archive. |
 | **F.2 Fresh Unpack & Build Test** | **DONE** | Extracted `PM-MLFQ-source.zip` into isolated `/tmp` directory. Cleanly compiled Modes 0, 1, 2 from scratch (exit code 0) and executed `analyze_results.py` successfully (exit code 0). | Verified distribution package. |
+
+
+---
+
+### Part G: Diagnostic and Safety Extensions (Feature A & B)
+
+| Item | Status | Evidence | Notes |
+|---|---|---|---|
+| **G.1 Feature A: Scheduler Trace Ring Buffer** | **DONE** | Created `kernel/trace.h`, `kernel/trace.c` (128 entries, `trace_lock` leaf spinlock). Implemented syscall `SYS_gettrace` (`gettrace`) and user utility `user/schedtrace.c`. Verified: (1) `PROC_NEW`, `CLASSIFIED`, `DEMOTE`, `PROMOTE_AGE`, `BOOST`, `PROC_EXIT` logged; (2) ring buffer wraps cleanly (>128 events tested); (3) `trace_panic_dump()` outputs last 16 entries lock-free upon panic. Output saved to `results/trace_demo.txt`. Gated by `SCHED_TRACE=0` default. | Flight recorder fully functional with zero default overhead. |
+| **G.2 Feature B: Per-Process Memory Cap** | **DONE** | Added `PROC_MEM_LIMIT` (bytes, default 0 = disabled) in `kernel/sched_config.h`, `mem_refusals` counter in `struct proc`, refusal logic in `growproc()` and `exec()`. Created `user/memhog.c`. Verified: (1) with cap=0, grows to 32+ MB; (2) with cap=4MB, halts at 4 MB and reports `mem_refusals=1` in SCHEDLOG; (3) baseline `usertests -q` passes all tests with cap=0. Output saved to `results/memcap_demo.txt`. | Safe fail-fast memory limiter implemented without deadlock risk. |
+| **G.3 Overhead & Compatibility Audit** | **DONE** | Measured overhead with `SCHED_TRACE=0` vs `1` on Exp 1 (turnarounds 15–18 ticks across both). Verified default builds for Modes 0–4 compile cleanly with zero errors. | Default kernel behavior strictly preserved. |

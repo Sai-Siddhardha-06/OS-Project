@@ -1,0 +1,40 @@
+================================================================================
+PM-MLFQ PER-PROCESS MEMORY LIMIT DEMONSTRATION (PROC_MEM_LIMIT)
+================================================================================
+1. Test with PROC_MEM_LIMIT=0 (Disabled - Baseline):
+Kernel build: make SCHED_MODE=2 PROC_MEM_LIMIT=0 CPUS=1
+
+Command output:
+xv6 kernel is booting
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ memhog
+memhog: starting memory allocation stress test...
+memhog: initial size = 16384 bytes
+memhog: reached target limit of 33554432 bytes without refusal (size = 33570816 bytes)
+memhog: finished test.
+
+Outcome: User program successfully allocated up to the 32 MB target test limit
+without any refusal.
+
+--------------------------------------------------------------------------------
+2. Test with PROC_MEM_LIMIT=4194304 (4 MB Per-Process Hard Cap):
+Kernel build: make SCHED_MODE=2 PROC_MEM_LIMIT=4194304 SCHED_LOG=1 CPUS=1
+
+Command output:
+xv6 kernel is booting
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ memhog
+memhog: starting memory allocation stress test...
+memhog: initial size = 16384 bytes
+memhog: sbrk refused at +4177920 bytes! (current total size = 4194304 bytes)
+memhog: finished test.
+SCHEDLOG pid=3 name=memhog arrival=2 first_run=2 exit=3 cpu=1 wait=0 init_q=-1 pred=-1 conf=0 transitions=0 infer_cycles=1926 mem_refusals=1
+
+Outcome:
+- Initial memory size = 16,384 bytes (4 pages: text, data, guard, user stack).
+- Memory expansion grew by exactly 4,177,920 bytes until total size reached 4,194,304 bytes.
+- Subsequent sbrk() immediately failed with return code -1, incrementing p->mem_refusals.
+- Refusal count reported in SCHEDLOG: mem_refusals=1.
+- No sleep or kernel stalls occurred; fail-fast design avoided deadlock risks.

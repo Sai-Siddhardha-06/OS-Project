@@ -28,6 +28,7 @@ main()
     iinit();            // inode table
     fileinit();         // file table
     virtio_disk_init(); // emulated hard disk
+    trace_init();       // scheduler trace ring buffer
     if (ml_self_test() != 0)
       panic("ml_self_test failed");
     userinit();         // first user process

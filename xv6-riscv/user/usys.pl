@@ -47,4 +47,5 @@ entry("getmemsize");
 entry("getschedstats");
 entry("setschedseed");
 entry("mlselftest");
+entry("gettrace");
 

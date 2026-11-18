@@ -29,6 +29,7 @@ OBJS = \
   $K/kernelvec.o \
   $K/plic.o \
   $K/virtio_disk.o \
+  $K/trace.o \
   $K/ml_scheduler.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
@@ -98,6 +99,12 @@ CFLAGS += -DSCHED_LOG
 endif
 ifdef DISABLE_AGING_BOOST
 CFLAGS += -DDISABLE_AGING_BOOST
+endif
+ifdef SCHED_TRACE
+CFLAGS += -DSCHED_TRACE
+endif
+ifdef PROC_MEM_LIMIT
+CFLAGS += -DPROC_MEM_LIMIT=$(PROC_MEM_LIMIT)
 endif
 ifdef TIMER_INTERVAL
 CFLAGS += -DTIMER_INTERVAL=$(TIMER_INTERVAL)
@@ -176,6 +183,8 @@ UPROGS=\
 	$U/_interactive\
 	$U/_mixedwork\
 	$U/_schedtest\
+	$U/_schedtrace\
+	$U/_memhog\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
@@ -197,7 +206,7 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 	then echo "-gdb tcp::$(GDBPORT)"; \
 	else echo "-s -p $(GDBPORT)"; fi)
 ifndef CPUS
-CPUS := 3
+CPUS := 1
 endif
 
 QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic

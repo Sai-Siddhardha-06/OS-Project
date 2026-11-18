@@ -25,3 +25,4 @@
 #define SYS_getschedstats 24
 #define SYS_setschedseed  25
 #define SYS_mlselftest    26
+#define SYS_gettrace      27

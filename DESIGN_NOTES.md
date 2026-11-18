@@ -113,3 +113,17 @@ In the RISC-V 64-bit architecture (and QEMU `virt` platform), `r_time()` reads t
 | Softmax sum-to-zero | Extremely large negative logits | Denominator guarded with fallback minimum of 1 |
 | Process exits before observation | Very short-lived tasks (< 3 bursts) | Safely tagged as `infer_status = 0`, inherits default priority without panic |
 | Kernel stack exhaustion | Allocating large structs on 4 KB kernel stack | All feature buffers and model tables are static or stack-minimal |
+
+
+---
+
+## 7. Diagnostic & Safety Subsystems Design
+
+### 7.1 Scheduler Flight Recorder (`kernel/trace.c`)
+- **Lock Ordering**: `trace_lock` is strictly a **leaf lock**. It is permitted to be acquired while holding `p->lock` or `tickslock`, but no other lock may ever be acquired while holding `trace_lock`. `trace_log()` never invokes `printk`, `printf`, or sleeping primitives.
+- **Ring Buffer Wrapping**: Capacity is set to `TRACE_ENTRIES = 128`. Write pointer `trace_head` advances monotonically; indexing wraps via modulo arithmetic (`trace_head % TRACE_ENTRIES`). Snapshot reads compute the contiguous oldest index (`trace_head - min(trace_head, 128)`), ensuring perfect chronological order across arbitrary wraps.
+- **Panic Dump Invariant**: In `panic()`, `trace_panic_dump()` executes without acquiring `trace_lock`. Taking a lock during kernel panic risks self-deadlock if the faulting core already held `trace_lock`. The lock-free read is documented as best-effort and potentially slightly torn, which is acceptable in post-mortem crash triage.
+
+### 7.2 Memory Allocator Hard Limits (`kernel/proc.c`, `kernel/exec.c`)
+- **Immediate Refusal vs Stalling**: In `growproc()` and `exec()`, exceeding `PROC_MEM_LIMIT` returns failure (`-1`) immediately without sleeping. Operating system allocators that stall or wait for memory under hard per-process caps risk permanent system-wide deadlock if the process holding locks or synchronization objects is the one stalled waiting for memory.
+- **Binary Compatibility**: Set to 0 by default, compiling down to zero overhead in normal kernel releases.

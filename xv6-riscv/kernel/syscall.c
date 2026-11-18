@@ -107,6 +107,7 @@ extern uint64 sys_getmemsize(void);
 extern uint64 sys_getschedstats(void);
 extern uint64 sys_setschedseed(void);
 extern uint64 sys_mlselftest(void);
+extern uint64 sys_gettrace(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -138,6 +139,7 @@ static uint64 (*syscalls[])(void) = {
   [SYS_getschedstats] = sys_getschedstats,
   [SYS_setschedseed] = sys_setschedseed,
   [SYS_mlselftest] = sys_mlselftest,
+  [SYS_gettrace] = sys_gettrace,
 // clang-format on
 };
 

@@ -193,5 +193,12 @@ void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
 
+// trace.c
+struct traceent;
+void            trace_init(void);
+void            trace_log(uint8, int, int, int);
+int             trace_snapshot(struct traceent *, int);
+void            trace_panic_dump(void);
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x) / sizeof((x)[0]))

@@ -7,6 +7,7 @@
 #include "defs.h"
 #include "sched_config.h"
 #include "schedstat.h"
+#include "trace.h"
 
 uint64
 get_ticks(void)
@@ -190,7 +191,9 @@ found:
   p->infer_status = 0;
   p->infer_cycles = 0;
   p->burst_count = 0;
+  p->mem_refusals = 0;
   ml_init_proc(p);
+  trace_log(TRACE_PROC_NEW, p->pid, 0, 0);
 
   return p;
 }
@@ -286,6 +289,12 @@ growproc(int n)
 
   sz = p->sz;
   if (n > 0) {
+#if PROC_MEM_LIMIT > 0
+    if (sz + n > PROC_MEM_LIMIT) {
+      p->mem_refusals++;
+      return -1;
+    }
+#endif
     if (sz + n > TRAPFRAME) {
       return -1;
     }
@@ -403,12 +412,20 @@ kexit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
   p->exit_tick = get_ticks();
+  trace_log(TRACE_PROC_EXIT, p->pid, 0, 0);
 
 #ifdef SCHED_LOG
+#if PROC_MEM_LIMIT > 0
+  printk("SCHEDLOG pid=%d name=%s arrival=%ld first_run=%ld exit=%ld cpu=%ld wait=%ld init_q=%d pred=%d conf=%d transitions=%d infer_cycles=%ld mem_refusals=%ld\n",
+         p->pid, p->name, p->arrival_tick, p->first_run_tick, p->exit_tick,
+         p->total_cpu_ticks, p->total_runnable_wait, p->init_queue,
+         p->pred_class, p->pred_conf, (int)p->queue_transitions, p->infer_cycles, p->mem_refusals);
+#else
   printk("SCHEDLOG pid=%d name=%s arrival=%ld first_run=%ld exit=%ld cpu=%ld wait=%ld init_q=%d pred=%d conf=%d transitions=%d infer_cycles=%ld\n",
          p->pid, p->name, p->arrival_tick, p->first_run_tick, p->exit_tick,
          p->total_cpu_ticks, p->total_runnable_wait, p->init_queue,
          p->pred_class, p->pred_conf, (int)p->queue_transitions, p->infer_cycles);
+#endif
 #endif
 
   release(&wait_lock);
@@ -497,15 +514,19 @@ sched_tick_update(void)
 #if SCHED_MODE >= SCHED_MLFQ && !defined(DISABLE_AGING_BOOST)
       if (do_boost) {
         if (p->priority > 0) {
+          int old_prio = p->priority;
           p->priority = 0;
           p->queue_transitions++;
+          trace_log(TRACE_BOOST, p->pid, old_prio, 0);
         }
         p->waiting_ticks = 0;
         p->quantum_used = 0;
       } else if (p->waiting_ticks >= AGING_THRESHOLD) {
         if (p->priority > 0) {
+          int old_prio = p->priority;
           p->priority--;
           p->queue_transitions++;
+          trace_log(TRACE_PROMOTE_AGING, p->pid, old_prio, p->priority);
         }
         p->waiting_ticks = 0;
       }
@@ -616,8 +637,10 @@ scheduler(void)
           if (exhausted) {
             p->quantum_exhaustions++;
             if (p->priority < MLFQ_QUEUES - 1) {
+              int old_prio = p->priority;
               p->priority++;
               p->queue_transitions++;
+              trace_log(TRACE_DEMOTE, p->pid, old_prio, p->priority);
             }
             p->quantum_used = 0;
           } else {

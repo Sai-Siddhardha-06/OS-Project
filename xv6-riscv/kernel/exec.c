@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "elf.h"
+#include "sched_config.h"
 
 static int loadseg(pde_t *, uint64, struct inode *, uint, uint);
 
@@ -69,6 +70,10 @@ kexec(char *path, char **argv)
     if (ph.vaddr % PGSIZE != 0)
       goto bad;
     uint64 sz1;
+#if PROC_MEM_LIMIT > 0
+    if (ph.vaddr + ph.memsz > PROC_MEM_LIMIT)
+      goto bad;
+#endif
     if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz,
                         flags2perm(ph.flags))) == 0)
       goto bad;

@@ -14,6 +14,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "proc.h"
+#include "trace.h"
 
 volatile int panicking = 0; // printing a panic message
 volatile int panicked = 0;  // spinning forever at end of a panic
@@ -140,6 +141,9 @@ panic(char *s)
   panicking = 1;
   printk("panic: ");
   printk("%s\n", s);
+#ifdef SCHED_TRACE
+  trace_panic_dump();
+#endif
   panicked = 1; // freeze uart output from other CPUs
   for (;;)
     ;

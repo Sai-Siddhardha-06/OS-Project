@@ -105,3 +105,44 @@ Outputs:
 - [AUDIT.md](file:///home/sai/OS%20Project/docs/AUDIT.md): Comprehensive itemized verification audit log.
 - [DESIGN_NOTES.md](file:///home/sai/OS%20Project/DESIGN_NOTES.md): Locking hierarchy and fixed-point math rationale.
 - [VIVA_PREP.md](file:///home/sai/OS%20Project/VIVA_PREP.md): Oral defense and technical interview guide.
+
+
+---
+
+## 6. Optional Diagnostic & Safety Features
+
+### Scheduler Event Trace Flight Recorder (`SCHED_TRACE`)
+Build with the scheduler flight recorder enabled to trace kernel events into a 128-entry in-memory ring buffer:
+```bash
+cd xv6-riscv
+make clean
+make SCHED_MODE=2 SCHED_TRACE=1 CPUS=1 -j4
+make fs.img SCHED_MODE=2 SCHED_TRACE=1 CPUS=1
+make qemu CPUS=1
+```
+Inside the xv6 shell:
+```bash
+$ schedtest 1 101
+$ schedtrace
+```
+Output displays chronological `PROC_NEW`, `CLASSIFIED`, `DEMOTE`, `PROMOTE_AGE`, `BOOST`, and `PROC_EXIT` events.
+
+### Per-Process Memory Cap (`PROC_MEM_LIMIT`)
+Enforce a hard byte limit on process heap allocations (`sbrk()`):
+```bash
+cd xv6-riscv
+make clean
+make SCHED_MODE=2 PROC_MEM_LIMIT=4194304 CPUS=1 -j4
+make fs.img SCHED_MODE=2 PROC_MEM_LIMIT=4194304 CPUS=1
+make qemu CPUS=1
+```
+Inside the xv6 shell:
+```bash
+$ memhog
+```
+`memhog` grows by 4 KB pages until reaching the 4 MB limit, whereupon subsequent allocations fail immediately with `-1`.
+
+> **Host Memory Tip (Linux/systemd)**: To restrict host RAM consumption during QEMU runs, execute:
+> ```bash
+> systemd-run --user --scope -p MemoryMax=2G make qemu
+> ```

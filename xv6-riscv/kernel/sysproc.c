@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "vm.h"
 #include "schedstat.h"
+#include "trace.h"
 
 uint64
 sys_exit(void)
@@ -178,4 +179,34 @@ uint64
 sys_mlselftest(void)
 {
   return ml_self_test();
+}
+
+uint64
+sys_gettrace(void)
+{
+#ifdef SCHED_TRACE
+  uint64 ubuf;
+  int max;
+
+  argaddr(0, &ubuf);
+  argint(1, &max);
+
+  if (ubuf == 0 || max <= 0)
+    return -1;
+  if (max > TRACE_ENTRIES)
+    max = TRACE_ENTRIES;
+
+  struct traceent kbuf[TRACE_ENTRIES];
+  int count = trace_snapshot(kbuf, max);
+
+  if (count <= 0)
+    return 0;
+
+  if (either_copyout(1, ubuf, (void *)kbuf, (uint64)count * sizeof(struct traceent)) < 0)
+    return -1;
+
+  return count;
+#else
+  return -1;
+#endif
 }

@@ -7,6 +7,7 @@
 #include "defs.h"
 #include "sched_config.h"
 #include "model_weights.h"
+#include "trace.h"
 
 static struct spinlock seed_lock;
 static uint32 global_sched_seed = BASE_RNG_SEED;
@@ -310,6 +311,7 @@ ml_infer_and_assign(struct proc *p, int32 features[NUM_FEATURES])
   p->init_queue = assigned_q;
   p->priority = assigned_q;
   p->quantum_used = 0;
+  trace_log(TRACE_CLASSIFIED, p->pid, p->pred_class, assigned_q);
 }
 
 void

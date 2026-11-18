@@ -50,4 +50,9 @@
 #define TIMER_INTERVAL 1000000
 #endif
 
+// Per-process memory limit in bytes (0 = disabled)
+#ifndef PROC_MEM_LIMIT
+#define PROC_MEM_LIMIT 0
+#endif
+
 #endif

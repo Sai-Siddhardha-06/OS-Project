@@ -1,92 +1,94 @@
 # PM-MLFQ: Probabilistic Machine Learning-Assisted Multilevel Feedback Queue CPU Scheduling in xv6
 
-**Authors**: Operating Systems Research Group
-**Target Platform**: RISC-V 64-bit (`virt`), QEMU System Emulator 
-**Base Kernel**: MIT xv6-riscv 
-**Repository**: `https://github.com/Sai-Siddhardha-06/OS-Project` 
-**Date**: November 2026
+**Author**: Moguluri Sai Siddhardha, B24DS018, B.Tech DSAI, IIT Bhilai
+**Target Platform**: RISC-V 64-bit (`virt`), QEMU System Emulator
+**Base Kernel**: MIT xv6-riscv
+**Repository**: `https://github.com/Sai-Siddhardha-06/OS-Project`
+**Date**: November 18th, 2026
 
 ---
 
 ## Abstract
 
-Traditional Multilevel Feedback Queue (MLFQ) scheduling algorithms operate on an optimistic heuristic: all newly arrived processes are assumed to be short, interactive tasks and are inserted into the highest-priority queue ($Q_0$). While this design delivers responsive execution for interactive threads, long-running compute-bound tasks initially contend with genuine interactive processes, causing latency spikes until the feedback mechanism demotes them. Conversely, static process classification lacks adaptability to changing phase behaviors, and deterministic machine learning predictions can lead to queue clustering and priority inversion under prediction errors.
+A conventional Multilevel Feedback Queue (MLFQ) scheduler assumes that every new process is short and interactive, and places it in the highest-priority queue ($Q_0$). Long-running compute-bound processes therefore contend with interactive ones until the feedback mechanism demotes them. This work investigates whether a trained classifier can improve on this by choosing a process's *initial* queue.
 
-In this work, we evaluate **PM-MLFQ** (Probabilistic Machine Learning-Assisted Multilevel Feedback Queue), an in-kernel CPU scheduler for the 64-bit RISC-V `xv6` operating system. PM-MLFQ incorporates an observation window during initial process execution, extracts a 9-dimensional fixed-point feature vector, evaluates an integer-only Multilayer Perceptron (MLP) directly in supervisor mode with zero floating-point dependencies, and assigns the initial queue probabilistically by sampling from a class-conditioned distribution $P(Q)$. 
+We implement **PM-MLFQ** (Probabilistic Machine Learning-Assisted MLFQ) inside the 64-bit RISC-V `xv6` kernel. A new process runs provisionally in $Q_1$ while the kernel observes its first CPU bursts. It then extracts a 9-dimensional integer feature vector, evaluates an integer-only Multilayer Perceptron (MLP) in supervisor mode with no floating-point operations, maps the predicted class probabilities to a queue distribution, and samples the initial queue from that distribution. Ordinary MLFQ feedback, aging and periodic priority boosting then continue to manage the process.
 
-Through 150 empirical trials across 5 scheduling modes and 6 benchmark workloads, our findings demonstrate:
-1. **PM-MLFQ did not beat conventional MLFQ in turnaround time in any experiment**: Standard MLFQ was slightly faster or tied on all workloads (e.g., 9.20 vs 9.90 ticks in Exp 1; 23.10 vs 23.53 ticks in Exp 5).
-2. **Workloads in Exps 2–4 did not discriminate between scheduling modes**: Interactive (Exp 2), Mixed (Exp 3), and I/O-heavy (Exp 4) workloads exhibited near-identical mean turnaround times across all 5 modes due to being bottlenecked by sleep durations and coarse timer resolution.
-3. **The ML classifier did not demonstrate statistically distinguishable value over the random control (RAND-CTRL)**: In Exp 5, the paired turnaround difference between ML-PROB and RAND-CTRL was $-0.875$ ticks with a 95% CI of $[-1.899, +0.149]$ (spanning zero). In Exp 1, RAND-CTRL was actually faster ($+0.600$ ticks, 95% CI $[+0.184, +1.016]$).
-4. **Feasibility and Safety**: We confirm that fixed-point ML inference can execute entirely within supervisor mode with an empirical execution latency of **3.227 microseconds** (32.27 timer ticks at 10 MHz) and zero kernel panics across the complete `usertests -q` suite.
+The research question is: *does sampling the initial queue from classifier-derived probabilities improve turnaround time compared with (a) conventional MLFQ, (b) deterministic ML assignment, and (c) random assignment that ignores the classifier?* We evaluate five scheduler modes (RR, MLFQ, ML-PROB, ML-DET, RAND-CTRL) on six workloads with five seeds each (150 trials in the xv6 kernel under QEMU).
 
----
+**Results.** The outcome is largely negative, and we report it as such:
 
-## 1. Introduction & Motivation
+1. **PM-MLFQ did not beat conventional MLFQ in turnaround time in any experiment.** MLFQ was faster or tied in every workload (e.g. 9.20 vs 9.90 ticks in Exp 1, where the difference is statistically distinguishable from zero; 23.10 vs 23.53 ticks in Exp 5, where it is not).
+2. **Experiments 2-4 did not discriminate between scheduling modes.** Their mean turnaround times were nearly identical across all modes, because the workloads are dominated by sleep durations and tick-granularity timing.
+3. **The classifier did not show a statistically distinguishable benefit over the random control.** In Exp 5 the paired turnaround difference ML-PROB minus RAND-CTRL was $-0.875$ ticks (95% CI $[-1.899, +0.149]$, spanning zero). In Exp 1, RAND-CTRL was faster than ML-PROB ($+0.600$ ticks, 95% CI $[+0.184, +1.016]$).
+4. In Exp 5, the sample mean turnaround of ML-PROB was lower than that of ML-DET ($-2.150$ ticks), but the 95% CI ($[-4.504, +0.204]$) spans zero with $n=5$, so this is a hypothesis for future work and not a confirmed effect.
+5. **Feasibility.** Fixed-point MLP inference runs entirely in supervisor mode. Its measured cost was 32.27 time-CSR units on average (about 3.2 µs on QEMU's virtual timebase), and a 24-vector boot-time self-test matches the Python fixed-point reference bit for bit.
 
-The Multilevel Feedback Queue scheduler, originally proposed by Corbato in the Compatible Time-Sharing System (CTSS), remains one of the foundational CPU scheduling policies in modern operating systems. By maintaining multiple priority levels with varying timeslices (quanta) and dynamically adjusting priorities based on observed CPU burst lengths, MLFQ approximates Shortest Remaining Time First (SRTF) without requiring a priori knowledge of job runtimes.
-
-Despite its success, traditional MLFQ suffers from several structural inefficiencies:
-
-1. **The Optimistic $Q_0$ Penalty**: Inserting every process into $Q_0$ forces genuine I/O-bound and interactive tasks to share high-priority execution with compute-heavy batches during their initial quantum, inducing interactive jitter.
-2. **Deterministic Prediction Cascades**: Purely deterministic classifiers that map processes directly to queues ($\arg\max_Q P(Q)$) create artificial convoy effects: when a batch of tasks exhibits similar initial features, the deterministic scheduler herds all of them into the exact same queue, defeating load distribution.
-3. **Kernel Floating-Point Prohibition**: Modern machine learning models rely heavily on floating-point arithmetic. Standard supervisor-mode operating system kernels cannot use hardware floating-point registers without incurring expensive register save/restore overheads during context switches or trapping on unsupported instructions.
-
-PM-MLFQ addresses these challenges through three principal contributions:
-
-- **Provisional Observation Phase**: New processes execute provisionally in an intermediate queue ($Q_1$) for a small number of bursts ($N \le 3$) to accumulate robust execution statistics without disrupting $Q_0$ responsiveness.
-- **Supervisor-Mode Fixed-Point Inference Engine**: A compact $9 \to 16 \to 8 \to 4$ Multilayer Perceptron implemented entirely in Q16.16 fixed-point arithmetic, complete with a 256-entry piecewise exponential lookup table for numerically stable softmax evaluation.
-- **Probabilistic Queue Assignment**: Rather than assigning processes to the single predicted class, the kernel maps model confidence distributions through a transition matrix to yield a queue probability vector $P(Q)$, sampling the initial queue via a lightweight per-process pseudo-random number generator (PRNG).
+All scheduling experiments were run with a single CPU (`CPUS=1`). Multi-CPU correctness was not established (see Section 5).
 
 ---
 
-## 2. Theoretical Formulation & Architecture
+## 1. Introduction and Motivation
+
+MLFQ, rooted in the Compatible Time-Sharing System (Corbató et al., 1962), approximates shortest-job-first behavior without knowing job lengths, by moving processes between priority levels according to their observed CPU use.
+
+Conventional MLFQ has potential weaknesses that motivated this study:
+
+1. **Optimistic $Q_0$ placement.** Every new process enters $Q_0$, so compute-heavy processes may briefly compete with genuinely interactive ones until demoted. (We hypothesize this costs interactive latency; the present workloads were too coarse to measure it, see Section 4.)
+2. **Possible clustering under deterministic prediction.** If a classifier maps each process directly to its most likely queue, processes with similar early behavior all land in the same queue. We hypothesized that sampling spreads them out and might help under load. Section 4.2 examines the queue assignments and Section 4.1 the effect on turnaround.
+3. **No floating point in the kernel.** Supervisor-mode code in xv6 does not use hardware floating point, so a neural network must be implemented in integer arithmetic.
+
+The implementation contributes:
+
+- **A provisional observation phase.** New processes run in $Q_1$ for up to `OBS_MIN_BURSTS` (3) completed bursts, bounded by `OBS_MAX_WINDOW_TICKS` (50), so observation always terminates.
+- **A kernel-resident fixed-point inference engine.** A $9 \to 16 \to 8 \to 4$ MLP in Q16.16 arithmetic with a 256-entry exponential lookup table for a numerically stable softmax.
+- **Probabilistic initial queue assignment** using a per-process Xorshift32 PRNG, plus two ablations (deterministic argmax and a classifier-free random control) that let us separate the effect of randomness from the effect of the classifier.
+
+---
+
+## 2. Architecture
 
 ### 2.1 System Model
 
 The scheduler manages three priority levels:
-- **Queue 0 ($Q_0$)**: Highest priority, timeslice $\tau_0 = 1$ tick.
-- **Queue 1 ($Q_1$)**: Medium priority, timeslice $\tau_1 = 2$ ticks. Also serves as the provisional observation queue.
-- **Queue 2 ($Q_2$)**: Lowest priority, timeslice $\tau_2 = 4$ ticks.
 
-Dispatching follows strict priority order: any runnable process in $Q_i$ is dispatched before any process in $Q_{i+1}$. Within each queue, processes are dispatched in round-robin order using rotating scan pointers to ensure intra-queue fairness.
+- **Queue 0 ($Q_0$)**: highest priority, timeslice $\tau_0 = 1$ tick.
+- **Queue 1 ($Q_1$)**: medium priority, timeslice $\tau_1 = 2$ ticks; also the provisional observation queue.
+- **Queue 2 ($Q_2$)**: lowest priority, timeslice $\tau_2 = 4$ ticks.
+
+A runnable process in $Q_i$ is always dispatched before any process in $Q_{i+1}$; within a queue, dispatch is round-robin using rotating scan pointers. A process that exhausts its quantum is demoted one level ($Q_2$ stays $Q_2$). A process that blocks or yields voluntarily before exhausting its quantum keeps its priority, and wakeup preserves priority. Starvation is prevented by aging (a runnable process that waits 10 ticks is promoted one level; sleeping time is not counted) and by a periodic boost every 100 ticks. All thresholds are compile-time configurable (`kernel/sched_config.h`). The scheduler is selected at compile time with `SCHED_MODE`, so there is one shared code base.
 
 ### 2.2 Feature Representation
 
-During execution, the kernel dynamically tracks process execution metrics inside `struct proc`. Once a process finishes either `OBS_MIN_BURSTS` (3) bursts or reaches `OBS_MAX_WINDOW_TICKS` (50) ticks, the kernel extracts a 9-dimensional integer feature vector (scaled by $10^3$ to retain fractional precision without floating-point arithmetic):
+When a process finishes `OBS_MIN_BURSTS` bursts or reaches `OBS_MAX_WINDOW_TICKS`, the kernel extracts a 9-dimensional integer feature vector (scaled by $10^3$ where fractional values matter):
 
-1. **`avg_burst`**: Average CPU burst duration ($\text{ticks} \times 10^3$).
-2. **`max_burst`**: Peak burst duration ($\text{ticks} \times 10^3$).
-3. **`burst_mad`**: Mean absolute deviation of burst durations.
-4. **`exhaust_ratio`**: Fraction of bursts terminating via quantum exhaustion vs voluntary block ($[0..1000]$).
-5. **`block_rate`**: Voluntary blocking transitions per unit time ($[0..1000]$).
-6. **`yield_rate`**: Voluntary yields per unit time ($[0..1000]$).
-7. **`sleep_ratio`**: Ratio of blocked sleep ticks to total lifetime ticks ($[0..1000]$).
-8. **`cpu_util`**: Ratio of active CPU execution ticks to total elapsed ticks ($[0..1000]$).
-9. **`burst_count`**: Total observed bursts during the observation window.
+1. `avg_burst`: average CPU burst duration (ticks $\times 10^3$)
+2. `max_burst`: maximum burst duration (ticks $\times 10^3$)
+3. `burst_mad`: mean absolute deviation of burst durations
+4. `exhaust_ratio`: fraction of bursts ended by quantum exhaustion, in $[0, 1000]$
+5. `block_rate`: voluntary blocking events per observed time, in $[0, 1000]$
+6. `yield_rate`: voluntary yields per observed time, in $[0, 1000]$
+7. `sleep_ratio`: blocked ticks over lifetime ticks, in $[0, 1000]$
+8. `cpu_util`: CPU ticks over elapsed ticks, in $[0, 1000]$
+9. `burst_count`: bursts observed in the window
 
-### 2.3 Neural Network Architecture & Fixed-Point Formulation
+The synthetic data generator computes these features with the same integer formulas and tick quantization as the kernel.
 
-The classifier predicts process affiliation across four workload classes:
-- $C_0$: **Interactive** (frequent short bursts, high voluntary blocking).
-- $C_1$: **I/O-Bound** (moderate bursts, dominated by I/O waits).
-- $C_2$: **CPU-Bound** (monopolizes quanta, zero voluntary blocking).
-- $C_3$: **Mixed/Batch** (varying phases).
+### 2.3 Neural Network and Fixed-Point Formulation
 
-The network is a feedforward MLP ($9 \to 16 \to 8 \to 4$) parameterized by weights and biases in Q16.16 format ($1.0 \equiv 65536$). Forward pass accumulation is performed in 64-bit signed integers:
+The classifier predicts four workload classes: $C_0$ Interactive, $C_1$ I/O-bound, $C_2$ CPU-bound, $C_3$ Mixed. The network is a feed-forward MLP ($9 \to 16 \to 8 \to 4$) with weights and biases in Q16.16 format ($1.0 \equiv 65536$) and 64-bit signed accumulation:
 
 $$z_j^{(l)} = b_j^{(l)} + \sum_{i=1}^{M_{l-1}} \left\lfloor \frac{a_i^{(l-1)} \cdot W_{ij}^{(l)}}{65536} \right\rfloor$$
 
-Activation functions for hidden layers use Rectified Linear Units (ReLU):
-$$a_j^{(l)} = \max\left(0, z_j^{(l)}\right)$$
-
-For the output layer, logit differences $\Delta_j = z_j - \max_k z_k \le 0$ are computed to prevent arithmetic overflow. A 256-entry exponential table approximates $e^{\Delta_j}$ over $[-8.0, 0.0]$, and the resulting logits are normalized into permille probabilities ($P(C_c) \in [0, 1000]$):
+Hidden layers use ReLU, $a_j^{(l)} = \max(0, z_j^{(l)})$. For the output layer, $\Delta_j = z_j - \max_k z_k \le 0$ is computed to avoid overflow, $e^{\Delta_j}$ is approximated by a 256-entry lookup table over $[-8.0, 0.0]$, and the result is normalized to permille probabilities:
 
 $$P(C_c) = \frac{\exp(\Delta_c)}{\sum_{k=0}^3 \exp(\Delta_k)} \times 1000$$
 
+The weights are exported by a script from the trained model (`ml/model_weights.h`); they are not written by hand. At boot, `ml_self_test()` runs 24 fixed input vectors through the kernel's integer inference and checks the outputs bit for bit against the Python fixed-point reference ("all 24 vectors passed bit-level check").
+
 ### 2.4 Class-to-Queue Mapping and Probabilistic Sampling
 
-The class probabilities are projected onto the 3 MLFQ priority queues using a static mapping matrix $\mathbf{M} \in \mathbb{R}^{4 \times 3}$:
+Class probabilities are projected onto the three queues with a static mapping matrix $\mathbf{M}$ (rows: classes; columns: $Q_0, Q_1, Q_2$):
 
 $$\mathbf{M} = \begin{bmatrix}
 0.85 & 0.10 & 0.05 \\
@@ -95,17 +97,21 @@ $$\mathbf{M} = \begin{bmatrix}
 0.15 & 0.70 & 0.15
 \end{bmatrix}$$
 
-The queue probability vector $\mathbf{q} = [P(Q_0), P(Q_1), P(Q_2)]$ is computed via matrix multiplication:
 $$P(Q_q) = \sum_{c=0}^3 P(C_c) \cdot M_{cq}$$
 
-To assign the process to an initial queue without cross-CPU lock contention, the kernel samples $r \sim \mathcal{U}(0, 1000)$ using an in-kernel Xorshift32 PRNG seeded per-process:
-$$Q_{\text{initial}} = \begin{cases} 
-0, & \text{if } r < P(Q_0) \\
-1, & \text{if } P(Q_0) \le r < P(Q_0) + P(Q_1) \\
+The kernel draws $r \sim \mathcal{U}(0, 1000)$ from a per-process Xorshift32 generator (seeded from the PID and a settable global seed, so runs are reproducible and there is no shared RNG state) and selects the queue:
+
+$$Q_{\text{initial}} = \begin{cases}
+0, & r < P(Q_0) \\
+1, & P(Q_0) \le r < P(Q_0) + P(Q_1) \\
 2, & \text{otherwise}
 \end{cases}$$
 
-For Mode 4 (`RAND-CTRL`), the classifier is omitted, and the process samples directly from the uniform marginal prior distribution $\mathbf{p}_{\text{rand}} = [333, 334, 333]$.
+This matrix is the project's **policy** and is separate from the classifier. It was not tuned to improve the reported metrics.
+
+**Ablation modes.** Mode 3 (ML-DET) assigns $\arg\max_q P(Q_q)$ instead of sampling. Mode 4 (RAND-CTRL) skips the classifier and samples from the fixed prior $[333, 334, 333]$. If the classifier carries useful information, ML-PROB should beat RAND-CTRL; if randomization alone were helpful, RAND-CTRL would match ML-PROB.
+
+If observation is incomplete when a process exits, or inference fails, no assignment is made and the process follows conventional MLFQ feedback.
 
 ---
 
@@ -113,154 +119,180 @@ For Mode 4 (`RAND-CTRL`), the classifier is omitted, and the process samples dir
 
 ### 3.1 Workload Suite
 
-The evaluation suite comprises six synthetic and macro benchmarks:
-- **Exp 1 (CPU-Bound)**: 4 concurrent compute loops performing matrix arithmetic.
-- **Exp 2 (Interactive)**: 4 processes alternating short compute bursts with voluntary sleeps.
-- **Exp 3 (Mixed CPU & Interactive)**: 2 compute-heavy and 2 interactive processes executing simultaneously.
-- **Exp 4 (I/O-Heavy)**: 4 processes generating intense file descriptor operations.
-- **Exp 5 (High-Concurrency Mixed)**: 8 concurrent processes spanning all four behavioral profiles.
-- **Exp 6 (Starvation Stress Test)**: 1 long-running CPU hog combined with 4 staggered interactive arrivals.
+All workloads are real xv6 user programs (`user/cpuwork.c`, `iowork.c`, `interactive.c`, `mixedwork.c`) launched by `schedtest`:
 
-### 3.2 Evaluated Scheduling Modes
+- **Exp 1 (CPU-bound)**: 4 concurrent `cpuwork` processes.
+- **Exp 2 (Interactive)**: 4 `interactive` processes alternating short compute bursts with voluntary sleeps.
+- **Exp 3 (Mixed CPU and interactive)**: 2 compute-heavy and 2 interactive processes together.
+- **Exp 4 (I/O-heavy)**: 4 `iowork` processes that repeatedly block.
+- **Exp 5 (High-concurrency mixed)**: 8 processes spanning all four behavior profiles.
+- **Exp 6 (Starvation stress)**: 1 long CPU hog with 4 staggered interactive arrivals.
 
-1. **Mode 0 (`RR`)**: Baseline xv6 round-robin.
-2. **Mode 1 (`MLFQ`)**: Standard 3-level MLFQ (all processes enter at $Q_0$).
-3. **Mode 2 (`ML-PROB`)**: PM-MLFQ with probabilistic initial queue assignment.
-4. **Mode 3 (`ML-DET`)**: Deterministic ML ablation ($\arg\max_Q P(Q)$).
-5. **Mode 4 (`RAND-CTRL`)**: Randomized control ablation (samples from $[333, 334, 333]$ without ML).
+### 3.2 Scheduling Modes
 
-### 3.3 Quantitative Results & Classification Rates
+1. **Mode 0 (RR)**: original xv6 round robin.
+2. **Mode 1 (MLFQ)**: conventional 3-level MLFQ; all processes enter $Q_0$.
+3. **Mode 2 (ML-PROB)**: PM-MLFQ with probabilistic initial queue.
+4. **Mode 3 (ML-DET)**: deterministic ML ablation.
+5. **Mode 4 (RAND-CTRL)**: classifier-free random ablation.
 
-A total of 150 trials (5 modes $\times$ 6 workloads $\times$ 5 seeds) were executed. Table 1 summarizes the key performance indicators and the fraction of processes that completed the observation window and received ML classification.
+### 3.3 Method
 
-**Table 1: Benchmark Summary Metrics and Process Classification Rates**
+150 trials were run (5 modes $\times$ 6 workloads $\times$ 5 seeds, seeds 101-105; the same seeds in every mode) on a single CPU (`CPUS=1`) in QEMU. The kernel prints one `SCHEDLOG` line per process at exit (arrival, first run, exit, CPU ticks, waiting ticks, initial queue, predicted class, confidence, transitions). A host script parses these logs (`results/raw/`) to compute turnaround (exit $-$ arrival), waiting (runnable but not running), response (first run $-$ arrival), classification fraction and queue transitions. Means, standard deviations, 95% confidence intervals and paired differences were recomputed from the raw logs. All 150 trials completed without failures. Plots in `results/` were generated from the same data. The raw logs were produced before two later, default-off additions (Section 7); a spot-check of Exp 1 under the final kernel showed the same process counts and state transitions, with small run-to-run timer variation, but the full set was not re-run.
+
+### 3.4 Results and Classification Rates
+
+**Table 1: Benchmark summary metrics and fraction of processes classified.** (Classification applies to modes 2-4 only; modes 0 and 1 have no classifier.)
 
 | Workload | Metric | Mode 0 (RR) | Mode 1 (MLFQ) | Mode 2 (ML-PROB) | Mode 3 (ML-DET) | Mode 4 (RAND-CTRL) |
 |---|---|---|---|---|---|---|
-| **Exp 1: CPU-Bound** | Turnaround Mean (ticks) | 10.05 | **9.20** | 9.90 | 9.65 | 9.30 |
-| | Wait Time Mean (ticks) | 7.50 | 6.70 | 7.35 | 7.10 | 6.80 |
-| | Fraction Classified | 0.0% | 0.0% | **45.0%** | **40.0%** | **45.0%** |
-| **Exp 2: Interactive** | Turnaround Mean (ticks) | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
-| | Wait Time Mean (ticks) | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
-| | Fraction Classified | 0.0% | 0.0% | **100.0%** | **100.0%** | **100.0%** |
-| **Exp 3: Mixed** | Turnaround Mean (ticks) | 14.35 | 14.35 | 14.65 | 14.40 | 14.30 |
-| | Wait Time Mean (ticks) | 13.00 | 13.00 | 13.20 | 13.10 | 12.80 |
-| | Fraction Classified | 0.0% | 0.0% | **75.0%** | **75.0%** | **80.0%** |
-| **Exp 4: I/O-Heavy** | Turnaround Mean (ticks) | 20.05 | 20.20 | 20.25 | 20.05 | 20.20 |
-| | Wait Time Mean (ticks) | 20.00 | 20.05 | 20.00 | 20.05 | 20.00 |
-| | Fraction Classified | 0.0% | 0.0% | **100.0%** | **100.0%** | **100.0%** |
-| **Exp 5: Concurrency** | Turnaround Mean (ticks) | 23.63 | **23.10** | 23.53 | 25.68 | 24.40 |
-| | Wait Time Mean (ticks) | 18.75 | **17.45** | 17.90 | 19.88 | 19.30 |
-| | Fraction Classified | 0.0% | 0.0% | **97.5%** | **100.0%** | **100.0%** |
-| **Exp 6: Starvation** | Turnaround Mean (ticks) | 7.56 | 7.60 | 7.64 | 7.64 | 7.64 |
-| | Fraction Classified | 0.0% | 0.0% | **100.0%** | **100.0%** | **100.0%** |
+| **Exp 1: CPU-bound** | Turnaround mean (ticks) | 10.05 | **9.20** | 9.90 | 9.65 | 9.30 |
+| | Wait time mean (ticks) | 7.50 | 6.70 | 7.35 | 7.10 | 6.80 |
+| | Fraction classified | n/a | n/a | 45.0% | 40.0% | 45.0% |
+| **Exp 2: Interactive** | Turnaround mean (ticks) | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
+| | Wait time mean (ticks) | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
+| | Fraction classified | n/a | n/a | 100.0% | 100.0% | 100.0% |
+| **Exp 3: Mixed** | Turnaround mean (ticks) | 14.35 | 14.35 | 14.65 | 14.40 | 14.30 |
+| | Wait time mean (ticks) | 13.00 | 13.00 | 13.20 | 13.10 | 12.80 |
+| | Fraction classified | n/a | n/a | 75.0% | 75.0% | 80.0% |
+| **Exp 4: I/O-heavy** | Turnaround mean (ticks) | 20.05 | 20.20 | 20.25 | 20.05 | 20.20 |
+| | Wait time mean (ticks) | 20.00 | 20.05 | 20.00 | 20.05 | 20.00 |
+| | Fraction classified | n/a | n/a | 100.0% | 100.0% | 100.0% |
+| **Exp 5: Concurrency** | Turnaround mean (ticks) | 23.63 | **23.10** | 23.53 | 25.68 | 24.40 |
+| | Wait time mean (ticks) | 18.75 | **17.45** | 17.90 | 19.88 | 19.30 |
+| | Fraction classified | n/a | n/a | 97.5% | 100.0% | 100.0% |
+| **Exp 6: Starvation** | Turnaround mean (ticks) | 7.56 | 7.60 | 7.64 | 7.64 | 7.64 |
+| | Fraction classified | n/a | n/a | 100.0% | 100.0% | 100.0% |
+
+Corresponding plots are in `results/` (`turnaround_comparison.png`, `waiting_time_comparison.png`, `response_time_comparison.png`, `comparison.png`) and per-process data in `results/experiment_results.csv`.
 
 ---
 
-## 4. Key Findings & Detailed Statistical Analysis
+## 4. Statistical Analysis
 
-### 4.1 Paired Difference Analysis ($n=5$ Seeds)
+### 4.1 Paired Differences ($n=5$ seeds)
 
-To determine whether performance differences between scheduling policies are statistically distinguishable from random noise under $n=5$ seeds (Seeds 101–105), we evaluate paired differences across identical seeds ($\Delta = \text{ML-PROB} - \text{Baseline}$). Table 2 details the paired differences and two-sided 95% confidence intervals ($t_{\text{crit}} = 2.776$ for $df=4$).
+We compare policies on identical seeds ($\Delta = \text{ML-PROB} - \text{baseline}$; positive means ML-PROB is slower) with two-sided 95% confidence intervals ($t_{\text{crit}} = 2.776$, $df=4$).
 
-**Table 2: Paired Seed Turnaround Differences for ML-PROB vs Baselines**
+**Table 2: Paired seed turnaround differences, ML-PROB vs baselines**
 
-| Workload | Comparison | Paired Seed Diffs [101..105] | Mean $\Delta$ | Std Dev | 95% Confidence Interval | Distinguishable from 0? |
+| Workload | Comparison | Paired diffs (seeds 101-105) | Mean $\Delta$ | Std dev | 95% CI | Distinguishable from 0? |
 |---|---|---|---|---|---|---|
-| **Exp 1: CPU-Bound** | vs MLFQ (Mode 1) | [0.0, 1.0, 1.0, 1.0, 0.5] | **+0.700** | 0.447 | **[+0.145, +1.255]** | **YES** (MLFQ is faster) |
-| | vs ML-DET (Mode 3) | [-0.25, 0.0, 0.0, 1.0, 0.5] | +0.250 | 0.500 | [-0.371, +0.871] | **NO** (Spans zero) |
-| | vs RAND-CTRL (Mode 4) | [0.75, 0.75, 1.0, 0.25, 0.25] | **+0.600** | 0.335 | **[+0.184, +1.016]** | **YES** (RAND-CTRL is faster) |
-| **Exp 5: Concurrency** | vs MLFQ (Mode 1) | [2.125, -1.25, -0.375, 3.0, -1.375] | +0.425 | 2.013 | [-2.074, +2.924] | **NO** (Spans zero) |
-| | vs ML-DET (Mode 3) | [-0.375, -3.75, -2.875, 0.125, -3.875] | -2.150 | 1.897 | [-4.504, +0.204] | **NO** (Spans zero) |
-| | vs RAND-CTRL (Mode 4) | [-1.375, -0.625, -0.5, 0.125, -2.0] | -0.875 | 0.824 | [-1.899, +0.149] | **NO** (Spans zero) |
+| **Exp 1** | vs MLFQ | [0.0, 1.0, 1.0, 1.0, 0.5] | **+0.700** | 0.447 | **[+0.145, +1.255]** | **Yes** (MLFQ faster) |
+| | vs ML-DET | [-0.25, 0.0, 0.0, 1.0, 0.5] | +0.250 | 0.500 | [-0.371, +0.871] | No |
+| | vs RAND-CTRL | [0.75, 0.75, 1.0, 0.25, 0.25] | **+0.600** | 0.335 | **[+0.184, +1.016]** | **Yes** (RAND-CTRL faster) |
+| **Exp 5** | vs MLFQ | [2.125, -1.25, -0.375, 3.0, -1.375] | +0.425 | 2.013 | [-2.074, +2.924] | No |
+| | vs ML-DET | [-0.375, -3.75, -2.875, 0.125, -3.875] | -2.150 | 1.897 | [-4.504, +0.204] | No |
+| | vs RAND-CTRL | [-1.375, -0.625, -0.5, 0.125, -2.0] | -0.875 | 0.824 | [-1.899, +0.149] | No |
 
-#### Statistical Interpretation:
-1. **In Exp 1 (CPU-bound)**: The 95% confidence interval for ML-PROB vs MLFQ is $[+0.145, +1.255]$. Because zero is excluded, we can state with 95% confidence that **standard MLFQ is faster than PM-MLFQ for pure compute loops**. Forcing compute tasks into provisional $Q_1$ execution adds an average penalty of 0.70 ticks. Furthermore, RAND-CTRL is also faster than ML-PROB ($+0.600$, 95% CI $[+0.184, +1.016]$), indicating that the ML classifier does not offer a performance advantage in this setting.
-2. **In Exp 5 (Concurrency)**: While the sample mean indicates ML-PROB achieved lower turnaround than ML-DET ($-2.150$ ticks) and RAND-CTRL ($-0.875$ ticks), high variance across the 5 seeds yields confidence intervals spanning zero ($[-4.504, +0.204]$ and $[-1.899, +0.149]$ respectively). Thus, with $n=5$, **these differences cannot be claimed as statistically distinguishable at the 95% confidence level**.
-3. **Variance in Deterministic Modes**: In deterministic scheduling policies (such as baseline Mode 0 and standard Mode 1), process arrival and execution follow static paths, leading to near-zero trial-to-trial variance. In contrast, randomized policies (Mode 2 and Mode 4) introduce PRNG sampling variance, which broadens the resulting confidence intervals and requires larger trial sample sizes ($n \ge 20$) to confirm small effect sizes.
+**Interpretation.**
 
----
+1. **Exp 1 (CPU-bound).** Zero is excluded from the interval against MLFQ, so conventional MLFQ was faster than PM-MLFQ here, by about 0.7 ticks on average. A plausible (untested) explanation is the provisional $Q_1$ observation phase, which delays CPU-bound processes that MLFQ would run immediately in $Q_0$; only 40-45% of the Exp 1 processes were classified before exiting (Section 4.3), so the classifier had limited chance to act. RAND-CTRL was also faster than ML-PROB (+0.6 ticks, interval excludes zero), so in this setting the classifier-driven policy was measurably slightly worse than random assignment.
+2. **Exp 5 (concurrency).** ML-PROB's sample mean was lower than ML-DET's and RAND-CTRL's, but all three intervals span zero with $n=5$. These differences cannot be called statistically distinguishable.
+3. **Variance.** Deterministic modes (0 and 1) have little trial-to-trial variance, while randomized modes (2 and 4) add PRNG sampling variance and need larger $n$ (we estimate $n \ge 20$) to resolve small effects.
 
-### 4.2 Empirical Evaluation of the "Herd Collapse" Hypothesis
+### 4.2 Queue Assignment Distribution (Exp 5) and the Clustering Hypothesis
 
-It was hypothesized that deterministic ML (`ML-DET`) causes a **herd collapse** by routing all processes with compute signatures into Queue 2 simultaneously. To evaluate this hypothesis against empirical evidence, we extract the initial queue assignments (`init_q`) from all 40 processes across the 5 trials of Exp 5:
+We hypothesized that deterministic assignment (ML-DET) would cluster similar processes into one queue and hurt turnaround under load. Table 3 shows the initial queues actually assigned across the 40 processes of Exp 5 (8 processes $\times$ 5 seeds).
 
-**Table 3: Empirical Initial Queue (`init_q`) Distribution in Exp 5 (40 processes total)**
+**Table 3: Initial queue (`init_q`) distribution in Exp 5**
 
-| Policy | `init_q = 0` ($Q_0$) | `init_q = 1` ($Q_1$) | `init_q = 2` ($Q_2$) | Unclassified (`-1`) | Workload Sub-Breakdown |
+| Policy | $Q_0$ | $Q_1$ | $Q_2$ | Unclassified | Breakdown |
 |---|---|---|---|---|---|
-| **Mode 1 (MLFQ)** | 0 (starts $Q_0$) | 0 | 0 | 40 (All start $Q_0$) | Conventional rule: all enter $Q_0$ by default |
-| **Mode 3 (ML-DET)** | 20 (50.0%) | 10 (25.0%) | 10 (25.0%) | 0 (0.0%) | 10/10 `cpuwork` $\to Q_2$; 10/10 `interactive` $\to Q_0$; 10/10 `iowork` $\to Q_0$; 10/10 `mixedwork` $\to Q_1$ |
+| **Mode 1 (MLFQ)** | all | 0 | 0 | n/a | all processes start in $Q_0$ by definition |
+| **Mode 3 (ML-DET)** | 20 (50.0%) | 10 (25.0%) | 10 (25.0%) | 0 | 10/10 `cpuwork` $\to Q_2$; 10/10 `interactive` $\to Q_0$; 10/10 `iowork` $\to Q_0$; 10/10 `mixedwork` $\to Q_1$ |
 | **Mode 2 (ML-PROB)** | 20 (50.0%) | 7 (17.5%) | 12 (30.0%) | 1 (2.5%) | `cpuwork`: 6 in $Q_2$, 2 in $Q_0$, 1 in $Q_1$, 1 unclassified; `mixedwork`: 5 in $Q_1$, 4 in $Q_2$, 1 in $Q_0$ |
-| **Mode 4 (RAND-CTRL)** | 13 (32.5%) | 13 (32.5%) | 14 (35.0%) | 0 (0.0%) | Uniform dispersion across $Q_0$, $Q_1$, $Q_2$ regardless of process class |
+| **Mode 4 (RAND-CTRL)** | 13 (32.5%) | 13 (32.5%) | 14 (35.0%) | 0 | uniform spread regardless of process type |
 
-#### Findings on Queue Clustering:
-The data directly support the structural mechanism of the hypothesis:
-- In Mode 3 (`ML-DET`), process classification is 100% deterministic: every single `cpuwork` process was assigned to $Q_2$ (10/10), and every `interactive` and `iowork` process was assigned to $Q_0$ (20/20).
-- In Mode 2 (`ML-PROB`), probabilistic sampling dispersed the compute and mixed processes across $Q_2$ (12 processes), $Q_1$ (7 processes), and $Q_0$ (20 processes).
-However, while this dispersion aligns with a 2.15-tick lower mean turnaround time in the sample, the wide confidence interval ($[-4.504, +0.204]$) means we must classify the performance benefit of avoiding herd collapse as an **empirically supported hypothesis rather than a statistically confirmed certainty**.
+**Findings.** ML-DET assigns every process of the same type to the same queue, which is the classifier behaving as designed (the classifier agreed with the true workload type on these runs). ML-PROB spreads `cpuwork` and `mixedwork` over several queues. The data therefore show that sampling disperses placements, but this table does not show that the dispersion is harmful or beneficial. The turnaround advantage of ML-PROB over ML-DET in Exp 5 (-2.150 ticks) is not statistically distinguishable from zero (Table 2). The clustering explanation remains an untested hypothesis, and we do not claim it as a result.
 
----
+### 4.3 Classification Rates and Early Exits
 
-### 4.3 Process Classification Rates and Early Exits
+- Exps 2, 4, 6: 100% of processes in modes 2-4 completed observation and were classified.
+- Exp 5: 97.5% (39 of 40) in ML-PROB.
+- Exp 3: 75-80%.
+- Exp 1: only 40-45%.
 
-Table 1 reports the fraction of processes that completed the observation phase:
-- **Interactive, I/O-heavy, and Starvation Workloads (Exps 2, 4, 6)**: **100%** of processes completed observation and received initial queue placement.
-- **Mixed Concurrency Workload (Exp 5)**: **97.5%** classified (39 of 40 processes).
-- **Mixed CPU/Interactive Workload (Exp 3)**: **75.0%** classified.
-- **Pure CPU-bound Workload (Exp 1)**: Only **40.0% to 45.0%** classified.
-Because CPU-bound benchmark processes execute continuous compute loops, several processes completed their entire lifetime within 1 or 2 long continuous timeslices, exiting before satisfying the `OBS_MIN_BURSTS` (3 bursts) condition. In these cases, the kernel safely fell back to standard feedback demotion without recording classification, confirming the stability of the early-exit fallback path.
+CPU-bound processes in Exp 1 ran in a few long timeslices and several exited before completing the 3-burst minimum. For these processes, no ML assignment occurred and conventional feedback demotion applied. In Exp 1, therefore, much of ML-PROB's behavior is that of MLFQ preceded by an observation delay, which limits what that experiment can show about the classifier.
 
----
+### 4.4 Model Generalization and Sample Size
 
-### 4.4 Sim-to-Real Model Generalization & Sample Size Caveats
+The network was trained on 6,000 synthetic samples generated from 20 workload blueprints (four classes) with gradient-based optimization. Evaluation used a group split by blueprint: blueprints 3, 7, 12 and 18 were held out, which avoids leakage from near-identical generated samples. Test accuracy on the held-out blueprints was **95.5%**. Per-class precision, recall, F1, the confusion matrix and training curves are in `ml/model_metrics.json`.
 
-The neural network was trained on 6,000 synthetic samples generated across 20 distinct workload blueprints and achieved **95.5% test accuracy** on held-out blueprints (Blueprints 3, 7, 12, 18).
+For sim-to-real transfer we collected **16 real feature traces** from the actual xv6 workload programs (`ml/real_traces.csv`), none of which were in the training data. 15 of 16 were classified correctly (93.75%). The exact (Clopper-Pearson) 95% binomial confidence interval for 15/16 is approximately **[69.8%, 99.8%]**. This indicates agreement between synthetic features and real kernel features but is too small a sample to establish accuracy on arbitrary programs. The synthetic training data comes from blueprints we wrote ourselves, so the high held-out accuracy shows the model learns those blueprints, not that it generalizes to workloads beyond them.
 
-To evaluate sim-to-real transfer, the model was tested on real execution traces captured from xv6:
-- **Sample Size**: Exactly **16 real traces** (`ml/real_traces.csv`) representing 4 distinct execution classes.
-- **Independence**: None of the 16 real traces were included in the synthetic training set.
-- **Accuracy**: 15 out of 16 traces were classified correctly (**93.75% accuracy**).
-- **Statistical Caveat**: With $N=16$, the rule-of-three 95% binomial confidence interval spans approximately **[69.8%, 99.8%]**. While this confirms that the fixed-point feature extractor correctly aligns with real kernel execution dynamics, the small sample size cannot guarantee equivalent accuracy across arbitrary unobserved user programs.
+### 4.5 Inference Overhead
 
----
+`ml_predict()` is timed in `kernel/ml_scheduler.c` with `r_time()` deltas. `r_time()` reads the RISC-V `time` CSR, which runs at 10 MHz on the QEMU `virt` platform (100 ns per unit), not at the CPU clock.
 
-### 4.5 Kernel Overhead Analysis & Hardware Timer Semantics
+- **Mean over 725 classified processes: 32.27 time-CSR units, i.e. about 3.2 µs.**
+- **Caveat:** this is measured on QEMU's virtual timebase under emulation, so it indicates the order of magnitude of the cost relative to other kernel operations, not latency on physical hardware.
+- **Heap allocation:** none on the inference path (no `kalloc`).
 
-In `kernel/ml_scheduler.c`, execution latency of `ml_predict()` is measured via `r_time()` deltas:
-$$\Delta_{\text{timer}} = \text{r\_time}()_{\text{post}} - \text{r\_time}()_{\text{pre}}$$
-In the RISC-V 64-bit architecture (and QEMU `virt` platform), `r_time()` reads the standard `time` CSR (clocked at 10 MHz, 100 ns per tick):
-- **Mean measurement across 725 processes**: **32.27 timer ticks**.
-- **Actual execution latency**: $\approx \mathbf{3.227\ \mu s}$ (microseconds), executing approximately 30 to 60 RISC-V assembly instructions.
-- **Heap allocation**: **0 bytes**. Zero dynamic memory allocations (`kalloc`) occur on the inference path.
+### 4.6 Starvation Safeguards
+
+Exp 6 uses one long CPU hog with four staggered interactive arrivals. In a single run in Mode 1 with aging and boost enabled, the hog completed in 9 ticks; with aging and boost disabled (`DISABLE_AGING_BOOST`), it took 27 ticks. This is one run (not repeated across seeds), so it is a demonstration that the mechanisms matter, not a statistical estimate. In the 150 main trials (aging and boost enabled) no process was starved.
 
 ---
 
-### 4.6 Verification of Starvation Safeguards
+## 5. Limitations and Threats to Validity
 
-In Exp 6, four interactive tasks arrived in staggered succession while a CPU hog occupied the processor:
-- **With Aging/Boost Enabled (Default)**: The CPU hog progressed steadily and completed in **9 ticks**.
-- **With Aging/Boost Disabled (`DISABLE_AGING_BOOST`)**: The CPU hog was starved during each interactive arrival, stretching its completion time to **27 ticks**.
-This confirms that aging and periodic boost are necessary safeguards against starvation in priority queue architectures.
-
----
-
-## 5. Threats to Validity & Limitations
-
-1. **Synthetic Training Distribution**: Training data was generated from synthetically parameterized burst distributions. Although evaluated on 16 real traces (93.75%), production operating systems encounter broader behavioral variance.
-2. **Coarse Clock Granularity**: In QEMU virt mode, timer interrupts occur at 100 Hz (10 ms per tick). Sub-tick micro-bursts are captured as 0 or 1 tick, limiting resolution for nanosecond-scale workloads and preventing Exps 2–4 from discriminating between policies.
-3. **Small Sample Size ($n=5$ Seeds)**: Five seeds were sufficient to show that standard MLFQ is faster in Exp 1, but insufficient to establish statistical significance for the observed differences in Exp 5 due to sampling variance.
-4. **Single-Core Virtual Hardware**: All 150 experimental trials were conducted on a single core (`CPUS=1`) to isolate scheduling logic from multi-core load balancing dynamics.
-5. **Observation Window Cost**: Running provisionally in $Q_1$ incurs a minor turnaround penalty for tasks that exit before completing observation.
+1. **Synthetic training data.** The model was trained on blueprints we designed and checked on only 16 real traces (Section 4.4).
+2. **Coarse time resolution.** Scheduling and feature timing are at tick granularity, so very short bursts are recorded as 0 or 1 tick. This is a main reason Exps 2-4 could not distinguish the policies.
+3. **Small sample.** Five seeds were enough to show that MLFQ is faster in Exp 1 but not enough to resolve the Exp 5 differences. Randomized modes need more seeds.
+4. **Short workloads.** Many processes live only a few tens of ticks, so observation often ends after the process is already close to finishing (Section 4.3).
+5. **Single-CPU validation only.** All 150 trials and the `usertests -q` run used for validation were on a single CPU (`CPUS=1`). The multi-CPU build was only boot-tested. In a later manual `usertests -q` run on the default 3-CPU build of Mode 2, the run stalled at `test truncate3`; this was not diagnosed (it may be slowness or a multi-CPU scheduling defect). **We therefore do not claim multi-CPU correctness of the scheduler.** Please run the project with `CPUS=1`.
+6. **Observation cost.** Running provisionally in $Q_1$ delays processes that would otherwise have run immediately in $Q_0$.
+7. **Hand-written workloads.** The workload programs are our own and may not represent real application mixes.
+8. **Inference cost** was measured under QEMU emulation only.
 
 ---
 
 ## 6. Conclusion
 
-PM-MLFQ demonstrates that embedded machine learning can be safely integrated into an operating system kernel using fixed-point supervisor-mode arithmetic with microsecond-level latency (3.227 $\mu$s). 
+The project shows that a trained neural network can be integrated into the xv6 kernel with integer-only arithmetic, with kernel inference matching its Python fixed-point reference bit for bit and a small per-process cost. However, in our evaluation:
 
-However, a rigorous audit of the experimental data reveals that:
-1. PM-MLFQ did **not** beat conventional MLFQ in turnaround time in any evaluated benchmark, as MLFQ's immediate dispatch into $Q_0$ avoids the provisional observation delay.
-2. The benchmark workloads in Experiments 2 through 4 were dominated by I/O sleep and could not discriminate between policies.
-3. The ML classifier did not demonstrate statistically distinguishable turnaround improvements over the randomized control baseline (RAND-CTRL) at $n=5$.
-4. The primary empirical value observed was that probabilistic assignment disperses initial queue placements and avoids the deterministic clustering behavior of $\arg\max$ classifiers.
+1. PM-MLFQ **did not** beat conventional MLFQ in turnaround time in any experiment, and in Exp 1 MLFQ was measurably faster.
+2. Experiments 2-4 could not discriminate between policies.
+3. The classifier did not show a statistically distinguishable benefit over a classifier-free random control, and in Exp 1 the random control was measurably faster.
+4. ML-PROB had a lower sample mean than ML-DET in Exp 5, but the difference was not statistically distinguishable at $n=5$; whether sampling helps relative to deterministic assignment under heavier load is left open.
+
+The contributions are therefore the working in-kernel pipeline (observation, integer inference, probabilistic assignment, feedback, aging and boosting), the ablation design that separates the effect of the classifier from that of randomization, and an honestly reported inconclusive result. Future work includes longer-running and more varied workloads, finer-grained timing, larger numbers of seeds, calibration of the classifier's probabilities, tuning of the class-to-queue policy on held-out seeds, training on real traces, and multi-CPU validation.
+
+---
+
+## 7. Additional Diagnostic and Safety Features
+
+These two small features are secondary to the PM-MLFQ contribution. Both are controlled by compile-time flags that default to off (`SCHED_TRACE=0`, `PROC_MEM_LIMIT=0`), so default builds and the experiments above are unaffected.
+
+### 7.1 Scheduler Event Trace ("Flight Recorder")
+
+- **Design.** A fixed ring buffer of 128 entries (`kernel/trace.c`) records scheduler events: process creation, classification (predicted class and sampled queue), demotion, aging promotion, priority boost and process exit. Each entry stores tick, CPU, PID, event type and two arguments.
+- **Locking.** A dedicated spinlock is a leaf lock: it may be taken while holding `p->lock` or `tickslock`, and nothing else is acquired while holding it. Trace logging never calls `printf` or sleeps.
+- **Access.** The `gettrace` system call copies a snapshot out with `copyout` after releasing the lock; the `schedtrace` user tool prints it oldest first.
+- **Panic dump.** On `panic()` the last 16 entries are printed with a best-effort, lock-free read (they may be slightly inconsistent if another CPU is writing).
+- **Evidence.** `results/trace_demo.txt` shows demotions, aging promotions, boosts and classification events from real runs. The wrap-around was tested by running eight consecutive `schedtest 1 101` runs and reading the buffer back with `schedtrace`; it returned exactly 128 entries, oldest first, with the first tick at 1287 (`results/trace_wrap_test.txt`). The panic dump was checked with a temporary test panic that has since been removed.
+- **Overhead.** In a few runs of Exp 1 under Mode 2, turnaround and inference time with tracing on and off were within timer jitter. This is not a rigorous measurement.
+
+### 7.2 Per-Process Memory Cap
+
+- **Design.** When `PROC_MEM_LIMIT` is nonzero, `growproc()` (used by `sbrk`) refuses to grow a process beyond the limit and returns $-1$, and `exec()` fails cleanly if a program would exceed it. Refusals are counted per process and shown in `SCHEDLOG` only when the feature is on.
+- **Why refusal and not stalling.** Putting allocating processes to sleep until memory frees can deadlock the kernel if all processes wait for memory, so the allocator fails fast instead.
+- **Scope.** This is a per-process limit, not a system-wide limit.
+- **Evidence.** `results/memcap_demo.txt`: with the cap disabled, the `memhog` program grew to its test ceiling (over 32 MB); with a 4 MB cap it stopped at exactly 4,194,304 bytes and recorded one refusal.
+- **Host RAM.** Separately from the kernel, the memory used by QEMU on the host can be bounded with, for example, `systemd-run --user --scope -p MemoryMax=2G make qemu`. This is a host-level tip and not part of the kernel.
+
+---
+
+## 8. Reproducibility
+
+Build a mode with `make SCHED_MODE=<0-4> CPUS=1 qemu`. The README documents how to regenerate the dataset, train and export the model, run the experiments, and recompute the tables and plots from `results/raw/`. The raw logs, `ml/model_metrics.json`, `ml/real_traces.csv` and the kernel-versus-Python validation output are included in the repository.
+
+---
+
+## References
+
+1. F. J. Corbató, M. Merwin-Daggett, R. C. Daggett, "An Experimental Time-Sharing System," *Proc. AFIPS Spring Joint Computer Conference*, 1962.
+2. R. H. Arpaci-Dusseau, A. C. Arpaci-Dusseau, *Operating Systems: Three Easy Pieces*, chapter "Scheduling: The Multi-Level Feedback Queue."
+3. R. Cox, M. F. Kaashoek, R. Morris, *xv6: a simple, Unix-like teaching operating system* (MIT, RISC-V edition).
+4. C. J. Clopper, E. S. Pearson, "The use of confidence or fiducial limits illustrated in the case of the binomial," *Biometrika*, 1934.

@@ -30,6 +30,8 @@ struct schedstat;
 int getschedstats(struct schedstat *buf, int max);
 int setschedseed(int seed);
 int mlselftest(void);
+struct traceent;
+int gettrace(struct traceent *buf, int max);
 
 // ulib.c
 int stat(const char *, struct stat *);

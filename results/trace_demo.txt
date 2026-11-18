@@ -1,0 +1,146 @@
+================================================================================
+PM-MLFQ SCHEDULER EVENT TRACE DEMONSTRATION (SCHED_TRACE=1)
+================================================================================
+Mode 2 (ML-PROB) with QEMU CPUS=1
+Workload: 4 background compute workloads + interactive session (145 ticks)
+Demonstrating:
+  1. Process creation (PROC_NEW)
+  2. Fixed-point neural network classification (CLASSIFIED)
+  3. MLFQ time-slice quantum exhaustion and demotion (DEMOTE)
+  4. Priority anti-starvation aging promotion (PROMOTE_AGE)
+  5. Periodic global priority boost at 100 ticks (BOOST)
+  6. Process exit (PROC_EXIT)
+================================================================================
+
+xv6 kernel is booting
+
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ cpuwork 1500000000 &
+$ cpuwork 1500000000 &
+$ cpuwork 1500000000 &
+$ cpuwork 1500000000 &
+$ interactive 60
+schedtrace
+$ TICK   CPU  PID    EVENT          ARG1   ARG2
+------ ---- ------ -------------- ------ ------
+0	0	1	PROC_NEW	0	0
+1	0	1	CLASSIFIED	1	0
+1	0	1	CLASSIFIED	1	0
+1	0	2	PROC_NEW	0	0
+1	0	2	CLASSIFIED	1	0
+1	0	3	PROC_NEW	0	0
+1	0	4	PROC_NEW	0	0
+1	0	3	PROC_EXIT	0	0
+1	0	2	CLASSIFIED	1	0
+1	0	4	CLASSIFIED	1	0
+3	0	4	DEMOTE	1	2
+4	0	4	CLASSIFIED	2	1
+6	0	4	DEMOTE	1	2
+6	0	5	PROC_NEW	0	0
+6	0	6	PROC_NEW	0	0
+6	0	5	PROC_EXIT	0	0
+8	0	6	DEMOTE	1	2
+9	0	6	CLASSIFIED	2	2
+10	0	7	PROC_NEW	0	0
+10	0	8	PROC_NEW	0	0
+10	0	7	PROC_EXIT	0	0
+12	0	8	DEMOTE	1	2
+14	0	8	CLASSIFIED	2	2
+14	0	9	PROC_NEW	0	0
+14	0	10	PROC_NEW	0	0
+14	0	9	PROC_EXIT	0	0
+16	0	10	DEMOTE	1	2
+17	0	10	CLASSIFIED	2	2
+18	0	11	PROC_NEW	0	0
+20	0	11	CLASSIFIED	1	0
+24	0	11	CLASSIFIED	0	0
+100	0	4	BOOST	2	0
+100	0	6	BOOST	2	0
+100	0	10	BOOST	2	0
+101	0	4	DEMOTE	0	1
+102	0	6	DEMOTE	0	1
+103	0	10	DEMOTE	0	1
+107	0	4	DEMOTE	1	2
+108	0	6	DEMOTE	1	2
+109	0	10	DEMOTE	1	2
+110	0	8	PROMOTE_AGE	2	1
+111	0	8	DEMOTE	1	2
+115	0	4	PROC_EXIT	0	0
+118	0	6	PROC_EXIT	0	0
+121	0	10	PROC_EXIT	0	0
+123	0	8	PROC_EXIT	0	0
+145	0	11	PROC_EXIT	0	0
+145	0	12	PROC_NEW	0	0
+145	0	12	CLASSIFIED	1	1
+
+49 entries
+
+Note: the 128-entry wrap-around test is in a separate file, trace_wrap_test.txt.
+
+================================================================================
+PANIC DUMP (trace_panic_dump, best-effort lock-free read)
+================================================================================
+Triggered by a temporary test panic during development. The trigger was removed
+before the final tree; the dump routine itself remains in kernel/trace.c.
+
+panic: deliberate panic for sched_trace test
+--- SCHED_TRACE panic dump (last 16 entries, may be torn) ---
+  [0] tick=7 cpu=0 pid=5 evt=2 arg1=1 arg2=2
+  [1] tick=8 cpu=0 pid=6 evt=2 arg1=1 arg2=2
+  [2] tick=9 cpu=0 pid=7 evt=2 arg1=1 arg2=2
+  [3] tick=10 cpu=0 pid=4 evt=1 arg1=2 arg2=2
+  [4] tick=11 cpu=0 pid=5 evt=1 arg1=2 arg2=1
+  [5] tick=11 cpu=0 pid=5 evt=5 arg1=0 arg2=0
+  [6] tick=11 cpu=0 pid=6 evt=5 arg1=0 arg2=0
+  [7] tick=11 cpu=0 pid=6 evt=1 arg1=2 arg2=2
+  [8] tick=11 cpu=0 pid=3 evt=1 arg1=0 arg2=0
+  [9] tick=11 cpu=0 pid=7 evt=5 arg1=0 arg2=0
+  [10] tick=11 cpu=0 pid=7 evt=1 arg1=2 arg2=2
+  [11] tick=11 cpu=0 pid=4 evt=5 arg1=0 arg2=0
+  [12] tick=11 cpu=0 pid=3 evt=5 arg1=0 arg2=0
+  [13] tick=11 cpu=0 pid=8 evt=0 arg1=0 arg2=0
+  [14] tick=11 cpu=0 pid=2 evt=1 arg1=0 arg2=0
+  [15] tick=11 cpu=0 pid=8 evt=1 arg1=1 arg2=0
+--- end trace dump ---
+
+================================================================================
+PM-MLFQ PER-PROCESS MEMORY LIMIT DEMONSTRATION (PROC_MEM_LIMIT)
+================================================================================
+1. Test with PROC_MEM_LIMIT=0 (Disabled - Baseline):
+Kernel build: make SCHED_MODE=2 PROC_MEM_LIMIT=0 CPUS=1
+
+Command output:
+xv6 kernel is booting
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ memhog
+memhog: starting memory allocation stress test...
+memhog: initial size = 16384 bytes
+memhog: reached target limit of 33554432 bytes without refusal (size = 33570816 bytes)
+memhog: finished test.
+
+Outcome: User program successfully allocated up to the 32 MB target test limit
+without any refusal.
+
+--------------------------------------------------------------------------------
+2. Test with PROC_MEM_LIMIT=4194304 (4 MB Per-Process Hard Cap):
+Kernel build: make SCHED_MODE=2 PROC_MEM_LIMIT=4194304 SCHED_LOG=1 CPUS=1
+
+Command output:
+xv6 kernel is booting
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ memhog
+memhog: starting memory allocation stress test...
+memhog: initial size = 16384 bytes
+memhog: sbrk refused at +4177920 bytes! (current total size = 4194304 bytes)
+memhog: finished test.
+SCHEDLOG pid=3 name=memhog arrival=2 first_run=2 exit=3 cpu=1 wait=0 init_q=-1 pred=-1 conf=0 transitions=0 infer_cycles=1926 mem_refusals=1
+
+Outcome:
+- Initial memory size = 16,384 bytes (4 pages: text, data, guard, user stack).
+- Memory expansion grew by exactly 4,177,920 bytes until total size reached 4,194,304 bytes.
+- Subsequent sbrk() immediately failed with return code -1, incrementing p->mem_refusals.
+- Refusal count reported in SCHEDLOG: mem_refusals=1.
+- No sleep or kernel stalls occurred; fail-fast design avoided deadlock risks.

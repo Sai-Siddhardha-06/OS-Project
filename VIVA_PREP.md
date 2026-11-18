@@ -76,3 +76,28 @@ Across 150 trials (5 modes $\times$ 6 workloads $\times$ 5 seeds):
 ### Q10: How was system stability verified?
 **Answer**:  
 We ran the complete `usertests -q` test suite under Mode 2 (`ML-PROB`). All tests passed cleanly without kernel panics, memory leaks, page faults, or deadlocks. In addition, `ml_self_test()` runs at boot time and validates 24 test vectors with 100% bit-exact accuracy before `userinit()` is called.
+
+
+---
+
+## 5. Diagnostic & Safety Subsystems Defense
+
+### Q11: How is the scheduler event trace lock hierarchy designed, and why is `trace_lock` a leaf lock?
+**Answer**:  
+`trace_lock` is strictly designed as a leaf lock in the kernel lock hierarchy. It may be acquired while holding `p->lock` or `tickslock`, but no subsequent locks (or memory allocators) are ever acquired while `trace_lock` is held. Furthermore, `trace_log()` strictly avoids calling `printf`, `printk`, or sleeping functions. This design eliminates any possibility of circular lock dependency or deadlock during event logging.
+
+### Q12: Why does `trace_panic_dump()` read the trace buffer without taking `trace_lock`, and what does "torn read" mean?
+**Answer**:  
+When `panic()` is triggered, the kernel is already handling a critical failure and other harts may be spinning or deadlocked while holding `trace_lock`. Attempting to acquire `trace_lock` during a panic could cause a secondary hang and prevent diagnostic output. Therefore, `trace_panic_dump()` reads the last 16 entries in a lock-free, best-effort manner. A "torn read" refers to the possibility that an entry's multi-word structure is partially updated by another hart while being printed; this slight inconsistency is an acceptable trade-off to guarantee immediate console visibility during crashes.
+
+### Q13: Why does `growproc()` immediately refuse memory requests rather than stalling when `PROC_MEM_LIMIT` is reached?
+**Answer**:  
+Stalling or sleeping allocators under hard per-process memory caps introduce severe deadlock risks. If a process holding kernel resources, file system sleeplocks, or waiting for children is put to sleep waiting for memory that will never become available, the entire operating system can deadlock. An immediate refusal (`-1` returned to `sbrk()`) allows user space to gracefully detect `ENOMEM`, clean up, or terminate without stalling kernel subsystems.
+
+### Q14: How does `exec()` behave when a program exceeds `PROC_MEM_LIMIT`?
+**Answer**:  
+In `exec.c`, the program header virtual addresses and memory sizes are checked against `PROC_MEM_LIMIT`. If an executable's static image exceeds the memory cap, `exec()` jumps immediately to `bad:`, safely freeing the provisional user page table (`proc_freepagetable`) and releasing the inode without modifying the calling process's existing address space or corrupting state.
+
+### Q15: How does the ring buffer guarantee chronological correctness across multiple wrap-arounds?
+**Answer**:  
+The buffer uses a monotonic counter `trace_head` alongside a fixed capacity of 128 entries. When `trace_head` exceeds 128, the oldest valid entry in the buffer is located at `trace_head % 128`. When `gettrace()` takes a snapshot under `trace_lock`, it begins iterating from this computed oldest slot and copies up to 128 entries into contiguous user space order, guaranteeing exact chronological sequence regardless of how many hundreds of events have occurred.
