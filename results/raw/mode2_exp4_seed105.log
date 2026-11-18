@@ -1,0 +1,15 @@
+
+xv6 kernel is booting
+
+ml_self_test: all 24 vectors passed bit-level check
+init: starting sh
+$ schedtest 4 105
+SCHEDTEST_START exp=4 seed=105
+SCHEDLOG pid=6 name=iowork arrival=1 first_run=1 exit=16 cpu=0 wait=15 init_q=0 pred=1 conf=1000 transitions=0
+SCHEDLOG pid=4 name=iowork arrival=1 first_run=1 exit=21 cpu=0 wait=20 init_q=1 pred=1 conf=1000 transitions=0
+SCHEDLOG pid=7 name=iowork arrival=1 first_run=1 exit=22 cpu=0 wait=20 init_q=2 pred=1 conf=1000 transitions=0
+SCHEDLOG pid=5 name=iowork arrival=1 first_run=1 exit=26 cpu=0 wait=25 init_q=0 pred=1 conf=1000 transitions=0
+SCHEDTEST_DONE exp=4 seed=105
+SCHEDLOG pid=3 name=schedtest arrival=1 first_run=1 exit=26 cpu=0 wait=0 init_q=0 pred=0 conf=997 transitions=0
+$ QEMU: Terminated
+

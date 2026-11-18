@@ -1,0 +1,24 @@
+{
+  "seed": 42,
+  "num_samples": 6000,
+  "num_blueprints": 20,
+  "num_classes": 4,
+  "classes": [
+    "Interactive",
+    "I/O-bound",
+    "CPU-bound",
+    "Mixed"
+  ],
+  "num_features": 9,
+  "features": [
+    "avg_burst",
+    "max_burst",
+    "burst_mad",
+    "exhaust_ratio",
+    "block_rate",
+    "yield_rate",
+    "sleep_ratio",
+    "cpu_util",
+    "burst_count"
+  ]
+}

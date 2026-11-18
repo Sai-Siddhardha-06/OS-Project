@@ -1,0 +1,608 @@
+{
+  "total_vectors": 24,
+  "kernel_selftest_status": "PASSED (24/24 bit-level exact match at boot)",
+  "float_vs_fixed_agreement": "100% on 1200 test samples",
+  "sim_to_real_accuracy": "93.75% (15/16 real xv6 traces)",
+  "vectors": [
+    {
+      "vector_id": 0,
+      "vector_name": "real_interactive",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        1500,
+        0,
+        1000,
+        0,
+        300
+      ],
+      "expected_probs": [
+        991,
+        7,
+        0,
+        2
+      ],
+      "expected_pred": 0,
+      "expected_conf": 991,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 1,
+      "vector_name": "real_iowork",
+      "features": [
+        333,
+        1000,
+        444,
+        0,
+        2000,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        3,
+        9,
+        357,
+        631
+      ],
+      "expected_pred": 3,
+      "expected_conf": 631,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 2,
+      "vector_name": "real_cpuwork",
+      "features": [
+        1000,
+        1000,
+        0,
+        333,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        997,
+        3
+      ],
+      "expected_pred": 2,
+      "expected_conf": 997,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 3,
+      "vector_name": "real_mixedwork",
+      "features": [
+        666,
+        1000,
+        444,
+        0,
+        333,
+        0,
+        333,
+        666,
+        300
+      ],
+      "expected_probs": [
+        5,
+        0,
+        68,
+        927
+      ],
+      "expected_pred": 3,
+      "expected_conf": 927,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 4,
+      "vector_name": "synth_c0_bp4_0",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        1000,
+        0,
+        1000,
+        0,
+        300
+      ],
+      "expected_probs": [
+        997,
+        2,
+        0,
+        1
+      ],
+      "expected_pred": 0,
+      "expected_conf": 997,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 5,
+      "vector_name": "synth_c0_bp4_1",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        1500,
+        0,
+        1000,
+        0,
+        300
+      ],
+      "expected_probs": [
+        991,
+        7,
+        0,
+        2
+      ],
+      "expected_pred": 0,
+      "expected_conf": 991,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 6,
+      "vector_name": "synth_c0_bp4_2",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        1000,
+        0,
+        1000,
+        0,
+        300
+      ],
+      "expected_probs": [
+        997,
+        2,
+        0,
+        1
+      ],
+      "expected_pred": 0,
+      "expected_conf": 997,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 7,
+      "vector_name": "synth_c0_bp4_3",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        1000,
+        333,
+        1000,
+        0,
+        300
+      ],
+      "expected_probs": [
+        960,
+        0,
+        0,
+        40
+      ],
+      "expected_pred": 0,
+      "expected_conf": 960,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 8,
+      "vector_name": "synth_c0_bp4_4",
+      "features": [
+        333,
+        1000,
+        444,
+        0,
+        1000,
+        0,
+        666,
+        333,
+        300
+      ],
+      "expected_probs": [
+        344,
+        22,
+        6,
+        628
+      ],
+      "expected_pred": 3,
+      "expected_conf": 628,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 9,
+      "vector_name": "synth_c1_bp14_0",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        0,
+        0,
+        300
+      ],
+      "expected_probs": [
+        0,
+        1000,
+        0,
+        0
+      ],
+      "expected_pred": 1,
+      "expected_conf": 1000,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 10,
+      "vector_name": "synth_c1_bp14_1",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        0,
+        0,
+        400
+      ],
+      "expected_probs": [
+        0,
+        997,
+        3,
+        0
+      ],
+      "expected_pred": 1,
+      "expected_conf": 997,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 11,
+      "vector_name": "synth_c1_bp14_2",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        0,
+        0,
+        300
+      ],
+      "expected_probs": [
+        0,
+        1000,
+        0,
+        0
+      ],
+      "expected_pred": 1,
+      "expected_conf": 1000,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 12,
+      "vector_name": "synth_c1_bp14_3",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        0,
+        0,
+        300
+      ],
+      "expected_probs": [
+        0,
+        1000,
+        0,
+        0
+      ],
+      "expected_pred": 1,
+      "expected_conf": 1000,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 13,
+      "vector_name": "synth_c1_bp14_4",
+      "features": [
+        0,
+        0,
+        0,
+        0,
+        3000,
+        0,
+        0,
+        0,
+        300
+      ],
+      "expected_probs": [
+        0,
+        1000,
+        0,
+        0
+      ],
+      "expected_pred": 1,
+      "expected_conf": 1000,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 14,
+      "vector_name": "synth_c2_bp24_0",
+      "features": [
+        1666,
+        2000,
+        444,
+        0,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        968,
+        32
+      ],
+      "expected_pred": 2,
+      "expected_conf": 968,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 15,
+      "vector_name": "synth_c2_bp24_1",
+      "features": [
+        2000,
+        2000,
+        0,
+        333,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        969,
+        31
+      ],
+      "expected_pred": 2,
+      "expected_conf": 969,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 16,
+      "vector_name": "synth_c2_bp24_2",
+      "features": [
+        1666,
+        2000,
+        444,
+        333,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        990,
+        10
+      ],
+      "expected_pred": 2,
+      "expected_conf": 990,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 17,
+      "vector_name": "synth_c2_bp24_3",
+      "features": [
+        1666,
+        2000,
+        444,
+        666,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        994,
+        6
+      ],
+      "expected_pred": 2,
+      "expected_conf": 994,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 18,
+      "vector_name": "synth_c2_bp24_4",
+      "features": [
+        1333,
+        2000,
+        444,
+        333,
+        0,
+        0,
+        0,
+        1000,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        994,
+        6
+      ],
+      "expected_pred": 2,
+      "expected_conf": 994,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 19,
+      "vector_name": "synth_c3_bp34_0",
+      "features": [
+        1666,
+        2000,
+        444,
+        0,
+        428,
+        0,
+        285,
+        714,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        6,
+        994
+      ],
+      "expected_pred": 3,
+      "expected_conf": 994,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 20,
+      "vector_name": "synth_c3_bp34_1",
+      "features": [
+        1666,
+        2000,
+        444,
+        0,
+        428,
+        0,
+        285,
+        714,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        6,
+        994
+      ],
+      "expected_pred": 3,
+      "expected_conf": 994,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 21,
+      "vector_name": "synth_c3_bp34_2",
+      "features": [
+        1666,
+        2000,
+        444,
+        333,
+        428,
+        0,
+        285,
+        714,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        8,
+        992
+      ],
+      "expected_pred": 3,
+      "expected_conf": 992,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 22,
+      "vector_name": "synth_c3_bp34_3",
+      "features": [
+        1000,
+        1000,
+        0,
+        0,
+        750,
+        0,
+        250,
+        750,
+        300
+      ],
+      "expected_probs": [
+        1,
+        0,
+        3,
+        996
+      ],
+      "expected_pred": 3,
+      "expected_conf": 996,
+      "kernel_verified": true,
+      "match": true
+    },
+    {
+      "vector_id": 23,
+      "vector_name": "synth_c3_bp34_4",
+      "features": [
+        1333,
+        2000,
+        444,
+        0,
+        500,
+        0,
+        333,
+        666,
+        300
+      ],
+      "expected_probs": [
+        0,
+        0,
+        7,
+        993
+      ],
+      "expected_pred": 3,
+      "expected_conf": 993,
+      "kernel_verified": true,
+      "match": true
+    }
+  ]
+}
